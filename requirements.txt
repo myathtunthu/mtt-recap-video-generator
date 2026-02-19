@@ -1,0 +1,12 @@
+flask
+flask-login
+flask-sqlalchemy
+werkzeug
+yt-dlp
+faster-whisper
+edge-tts
+requests
+googletrans==4.0.0rc1
+opencv-python
+numpy
+gunicorn
