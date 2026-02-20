@@ -17,12 +17,11 @@ app = Flask(__name__)
 
 # --- Database & Config ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-app.config['SECRET_KEY'] = 'render-deploy-secret-123'
+app.config['SECRET_KEY'] = 'mtt-recap-super-secret'
 db = SQLAlchemy(app)
 
 UPLOAD_FOLDER = "downloads"
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # --- User Model ---
 login_manager = LoginManager()
@@ -45,27 +44,19 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
 
-# --- Whisper Model (Tiny version for low RAM) ---
+# --- Whisper Model (RAM သက်သာအောင် tiny သုံးသည်) ---
 print("Loading Whisper model (tiny)...")
-try:
-    # Render Free Plan အတွက် tiny က အသင့်တော်ဆုံးပါ
-    model = WhisperModel("tiny", device="cpu", compute_type="int8")
-    print("Whisper model loaded!")
-except Exception as e:
-    print(f"Whisper Model Error: {e}")
+model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
 processing_status = {}
 
 # --- Utility Functions ---
 def get_ffmpeg():
-    """Render မှာ path ပြဿနာမရှိအောင် စစ်ဆေးပေးတာပါ"""
-    if os.path.exists('./ffmpeg'):
-        return './ffmpeg'
-    return 'ffmpeg'
+    return './ffmpeg' if os.path.exists('./ffmpeg') else 'ffmpeg'
 
 def download_media(url):
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'format': 'best', # Error မတက်အောင် best ပဲထားလိုက်ပါတယ်
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(id)s.%(ext)s'),
         'quiet': True,
         'no_warnings': True,
@@ -75,8 +66,7 @@ def download_media(url):
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        return filename, info.get('title', 'Untitled Video')
+        return ydl.prepare_filename(info), info.get('title', 'Untitled')
 
 def transcribe_audio(audio_path):
     segments, info = model.transcribe(audio_path)
@@ -89,28 +79,26 @@ def translate_text(text, target='my'):
         res = requests.get(url, timeout=10).json()
         return "".join([s[0] for s in res[0]])
     except:
-        return "ဘာသာပြန်မရပါ (Network Error)"
-
-async def text_to_speech(text, output_file, voice="my-MM-ThihaNeural"):
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(output_file)
-
-def generate_events(process_id):
-    while True:
-        if process_id in processing_status:
-            data = processing_status[process_id]
-            yield f"data: {json.dumps(data)}\n\n"
-            if data.get('status') in ['completed', 'error']:
-                break
-        time.sleep(1)
+        return text
 
 # --- Routes ---
 
 @app.route('/')
 @login_required
 def index():
-    # မူရင်း HTML code အားလုံးကို ဤနေရာတွင် ထားပါသည် (အတိုချုံးပြထားသည်)
     return render_template_html()
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        if User.query.filter_by(username=request.form.get('username')).first():
+            return 'အမည်ရှိပြီးသားပါ'
+        user = User(username=request.form.get('username'))
+        user.set_password(request.form.get('password'))
+        db.session.add(user)
+        db.session.commit()
+        return redirect(url_for('login'))
+    return '''<body style="text-align:center;padding:50px;"><h2>📝 Sign Up</h2><form method="post"><input name="username" placeholder="Name" required><br><br><input name="password" type="password" placeholder="Password" required><br><br><button type="submit">Register</button></form></body>'''
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -119,61 +107,39 @@ def login():
         if user and user.check_password(request.form.get('password')):
             login_user(user)
             return redirect(url_for('index'))
-    return '''<body style="font-family:sans-serif;text-align:center;padding:50px;">
-    <h2>🔐 Login</h2><form method="post">
-    <input name="username" placeholder="Name" required><br><br>
-    <input name="password" type="password" placeholder="Password" required><br><br>
-    <button type="submit">Login</button></form>
-    <p><a href="/signup">အကောင့်ဖွင့်ရန်</a></p></body>'''
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        user = User(username=request.form.get('username'))
-        user.set_password(request.form.get('password'))
-        db.session.add(user)
-        db.session.commit()
-        return redirect(url_for('login'))
-    return '''<body style="font-family:sans-serif;text-align:center;padding:50px;">
-    <h2>📝 Sign Up</h2><form method="post">
-    <input name="username" placeholder="Name" required><br><br>
-    <input name="password" type="password" placeholder="Password" required><br><br>
-    <button type="submit">Register</button></form></body>'''
-
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
+    return '''<body style="text-align:center;padding:50px;"><h2>🔐 Login</h2><form method="post"><input name="username" placeholder="Name" required><br><br><input name="password" type="password" placeholder="Password" required><br><br><button type="submit">Login</button></form><p><a href="/signup">Sign Up</a></p></body>'''
 
 @app.route('/process', methods=['POST'])
 @login_required
 def process():
     data = request.json
-    url = data.get('url')
-    option = data.get('option', 'original_video')
-    target_lang = data.get('target_lang', 'my')
-    
+    url, option, target_lang = data.get('url'), data.get('option'), data.get('target_lang', 'my')
     process_id = str(int(time.time()))
-    processing_status[process_id] = {'status': 'processing', 'percent': 10, 'message': 'စတင်နေပါပြီ...'}
+    processing_status[process_id] = {'status': 'processing', 'percent': 5, 'message': 'စတင်နေသည်...'}
 
     def run_task():
         try:
             # 1. Download
-            processing_status[process_id].update({'percent': 25, 'message': 'ဒေါင်းလုဒ်ဆွဲနေသည်...'})
+            processing_status[process_id].update({'percent': 20, 'message': 'ဒေါင်းလုဒ်ဆွဲနေသည်...'})
             file_path, title = download_media(url)
             
-            # 2. Extract Audio
-            processing_status[process_id].update({'percent': 45, 'message': 'အသံဖိုင်ထုတ်ယူနေသည်...'})
+            # 2. Extract Audio (Transcript တွေအတွက် လိုအပ်တယ်)
             audio_path = file_path.rsplit('.', 1)[0] + ".mp3"
-            ffmpeg_path = get_ffmpeg()
-            subprocess.run([ffmpeg_path, '-i', file_path, '-q:a', '0', '-map', 'a', audio_path, '-y'], check=True)
+            subprocess.run([get_ffmpeg(), '-i', file_path, '-q:a', '0', '-map', 'a', audio_path, '-y'], check=True)
             
-            # 3. Transcribe & Translate
-            processing_status[process_id].update({'percent': 70, 'message': 'ဘာသာပြန်နေသည်...'})
-            text, lang = transcribe_audio(audio_path)
-            translated = translate_text(text, target_lang)
+            result = {'title': title}
             
-            result = {'title': title, 'transcribed_text': text, 'translated_text': translated}
+            # 3. Handle Options
+            if option in ['transcript', 'transcript_only', 'audio']:
+                processing_status[process_id].update({'percent': 60, 'message': 'စာသားပြောင်းနေသည်...'})
+                text, lang = transcribe_audio(audio_path)
+                result['transcribed_text'] = text
+                
+                if option in ['transcript', 'audio']:
+                    processing_status[process_id].update({'percent': 80, 'message': 'ဘာသာပြန်နေသည်...'})
+                    result['translated_text'] = translate_text(text, target_lang)
+
+            # Assign Files
             if option == 'original_video': result['video_file'] = os.path.basename(file_path)
             if option == 'audio': result['audio_file'] = os.path.basename(audio_path)
             
@@ -188,34 +154,47 @@ def process():
 def progress(process_id):
     return Response(stream_with_context(generate_events(process_id)), mimetype='text/event-stream')
 
+def generate_events(process_id):
+    while True:
+        if process_id in processing_status:
+            yield f"data: {json.dumps(processing_status[process_id])}\n\n"
+            if processing_status[process_id]['status'] in ['completed', 'error']: break
+        time.sleep(1)
+
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_file(os.path.join(UPLOAD_FOLDER, filename))
+
+@app.route('/logout')
+def logout():
+    logout_user(); return redirect(url_for('login'))
 
 def render_template_html():
     return '''
     <!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI Video Generator</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f4f9; }
-        .box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        input, select, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-        button { background: #4CAF50; color: white; border: none; cursor: pointer; font-weight: bold; }
-        .progress-bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; display:none; }
-        .fill { height: 100%; background: #4CAF50; width: 0%; transition: 0.3s; }
-        #result { margin-top: 20px; display: none; padding: 15px; background: #e8f5e9; border-radius: 5px; }
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f0f2f5; }
+        .box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; }
+        button { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
+        .progress { height: 10px; background: #eee; border-radius: 5px; display:none; margin: 15px 0; }
+        .fill { height: 100%; background: #28a745; width: 0%; transition: 0.3s; }
+        #result { margin-top: 20px; display: none; padding: 15px; background: #fff; border: 1px solid #28a745; border-radius: 8px; }
     </style></head>
     <body><div class="box">
-        <h3>🎬 AI Video & Audio Downloader</h3>
-        <input type="text" id="url" placeholder="TikTok or YouTube Link">
+        <h3>🎬 AI Video Generator</h3>
+        <input type="text" id="url" placeholder="YouTube or TikTok Link">
         <select id="option">
-            <option value="original_video">Original Video Download</option>
-            <option value="audio">Extract Audio (MP3)</option>
+            <option value="original_video">🎬 Original Video Download</option>
+            <option value="transcript_only">📝 စာသားချည်းထုတ် (Transcript)</option>
+            <option value="transcript">📝 စာသား + ဘာသာပြန်</option>
+            <option value="audio">🎵 အသံချည်းထုတ် (Audio)</option>
         </select>
         <button id="btn" onclick="start()">စတင်မည်</button>
-        <div class="progress-bar" id="pb"><div class="fill" id="fill"></div></div>
-        <p id="msg"></p>
+        <div class="progress" id="pb"><div class="fill" id="fill"></div></div>
+        <p id="msg" style="text-align:center; color:#666;"></p>
         <div id="result"></div>
-        <hr><a href="/logout">Logout</a>
+        <hr><a href="/logout" style="color:#d9534f; text-decoration:none;">Logout</a>
     </div>
     <script>
         async function start() {
@@ -223,6 +202,7 @@ def render_template_html():
             if(!url) return alert("Link ထည့်ပါ");
             document.getElementById('btn').disabled = true;
             document.getElementById('pb').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
             
             const res = await fetch('/process', {
                 method: 'POST',
@@ -230,27 +210,21 @@ def render_template_html():
                 body: JSON.stringify({url: url, option: document.getElementById('option').value})
             });
             const data = await res.json();
-            
             const ev = new EventSource('/progress/' + data.process_id);
             ev.onmessage = (e) => {
                 const p = JSON.parse(e.data);
                 document.getElementById('fill').style.width = p.percent + '%';
                 document.getElementById('msg').innerText = p.message || p.status;
-                if(p.status === 'completed') {
-                    ev.close();
-                    showResult(p.result);
-                }
-                if(p.status === 'error') {
-                    ev.close();
-                    alert("Error: " + p.message);
-                }
+                if(p.status === 'completed') { ev.close(); showResult(p.result); }
+                if(p.status === 'error') { ev.close(); alert("Error: " + p.message); document.getElementById('btn').disabled = false; }
             };
         }
         function showResult(res) {
-            let h = `<b>✅ ${res.title}</b><br>`;
-            if(res.video_file) h += `<a href="/download/${res.video_file}" download>📥 Download Video</a><br>`;
-            if(res.audio_file) h += `<a href="/download/${res.audio_file}" download>📥 Download Audio</a><br>`;
-            h += `<p><b>Translated:</b> ${res.translated_text}</p>`;
+            let h = `<b>✅ ${res.title}</b><hr>`;
+            if(res.video_file) h += `<a href="/download/${res.video_file}" download style="display:block;margin:10px 0;color:#007bff;">📥 Download Video</a>`;
+            if(res.audio_file) h += `<a href="/download/${res.audio_file}" download style="display:block;margin:10px 0;color:#007bff;">📥 Download Audio</a>`;
+            if(res.transcribed_text) h += `<p><b>Original:</b><br>${res.transcribed_text}</p>`;
+            if(res.translated_text) h += `<p><b>Translated:</b><br>${res.translated_text}</p>`;
             document.getElementById('result').innerHTML = h;
             document.getElementById('result').style.display = 'block';
             document.getElementById('btn').disabled = false;
