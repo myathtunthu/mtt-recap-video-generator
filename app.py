@@ -67,12 +67,15 @@ VOICES = {
 }
 
 def download_video_only(url):
-    """Original Video ချည်းပဲ ဆွဲထုတ်မယ်"""
+    """Original Video ချည်းပဲ ဆွဲထုတ်မယ် (YouTube/TikTok)"""
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
         'quiet': True,
-        'cookiefile': 'cookies.txt'
+        'extractor_args': {
+            'youtube': ['player-client=web', 'po-token-provider=bgutil'],
+            'tiktok': ['player_client=web']
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -82,7 +85,7 @@ def download_video_only(url):
         return video_file, info['title']
 
 def download_audio_only(url):
-    """Audio ချည်းပဲ ဆွဲထုတ်မယ်"""
+    """Audio ချည်းပဲ ဆွဲထုတ်မယ် (YouTube/TikTok)"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -92,7 +95,10 @@ def download_audio_only(url):
         }],
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
         'quiet': True,
-        'cookiefile': 'cookies.txt'
+        'extractor_args': {
+            'youtube': ['player-client=web', 'po-token-provider=bgutil'],
+            'tiktok': ['player_client=web']
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -108,7 +114,10 @@ def download_video(url):
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
         'quiet': True,
         'merge_output_format': 'mp4',
-        'cookiefile': 'cookies.txt'
+        'extractor_args': {
+            'youtube': ['player-client=web', 'po-token-provider=bgutil'],
+            'tiktok': ['player_client=web']
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
