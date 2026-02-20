@@ -71,7 +71,8 @@ def download_video_only(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
-        'quiet': True
+        'quiet': True,
+        'cookiefile': 'cookies.txt'
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -90,7 +91,8 @@ def download_audio_only(url):
             'preferredquality': '192',
         }],
         'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
-        'quiet': True
+        'quiet': True,
+        'cookiefile': 'cookies.txt'
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -98,6 +100,22 @@ def download_audio_only(url):
         filename = ydl.prepare_filename(info)
         audio_file = filename.rsplit('.', 1)[0] + '.mp3'
         return audio_file, info['title']
+
+def download_video(url):
+    """Video နဲ့ Audio ဆွဲထုတ်မယ် (Processing အတွက်)"""
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': os.path.join(UPLOAD_FOLDER, '%(title)s.%(ext)s'),
+        'quiet': True,
+        'merge_output_format': 'mp4',
+        'cookiefile': 'cookies.txt'
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        video_file = filename.rsplit('.', 1)[0] + '.mp4'
+        return video_file, info['title']
 
 def transcribe_audio(audio_path):
     """Audio ကနေ စာသားထုတ်မယ်"""
@@ -184,49 +202,7 @@ def generate_events(process_id):
                 break
         time.sleep(0.5)
 
-# Login Page
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
-        
-        if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for('index'))
-        
-        return 'နာမည် သို့မဟုတ် လျှို့ဝှက်နံပါတ် မှားနေတယ်'
-    
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Login - Video Generator</title>
-        <style>
-            body { font-family: Arial; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; }
-            .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 300px; }
-            h2 { text-align: center; color: #333; margin-bottom: 30px; }
-            input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-            button { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
-            .link { text-align: center; margin-top: 15px; }
-            .link a { color: #667eea; text-decoration: none; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>🔐 Login ဝင်မယ်</h2>
-            <form method="post">
-                <input type="text" name="username" placeholder="နာမည်" required>
-                <input type="password" name="password" placeholder="လျှို့ဝှက်နံပါတ်" required>
-                <button type="submit">ဝင်မယ်</button>
-            </form>
-            <div class="link"><a href="/signup">အကောင့်မရှိသေးဘူးလား? အသစ်ဆောက်မယ်</a></div>
-        </div>
-    </body>
-    </html>
-    '''
+# Sign Up Page
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -272,6 +248,51 @@ def signup():
     </body>
     </html>
     '''
+
+# Login Page
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password):
+            login_user(user)
+            return redirect(url_for('index'))
+        
+        return 'နာမည် သို့မဟုတ် လျှို့ဝှက်နံပါတ် မှားနေတယ်'
+    
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Login - Video Generator</title>
+        <style>
+            body { font-family: Arial; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; }
+            .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 300px; }
+            h2 { text-align: center; color: #333; margin-bottom: 30px; }
+            input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+            button { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+            .link { text-align: center; margin-top: 15px; }
+            .link a { color: #667eea; text-decoration: none; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>🔐 Login ဝင်မယ်</h2>
+            <form method="post">
+                <input type="text" name="username" placeholder="နာမည်" required>
+                <input type="password" name="password" placeholder="လျှို့ဝှက်နံပါတ်" required>
+                <button type="submit">ဝင်မယ်</button>
+            </form>
+            <div class="link"><a href="/signup">အကောင့်မရှိသေးဘူးလား? အသစ်ဆောက်မယ်</a></div>
+        </div>
+    </body>
+    </html>
+    '''
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -485,7 +506,7 @@ def process():
             
         elif option == 'video':
             processing_status[process_id] = {'status': 'processing', 'percent': 10, 'message': 'Video ကိုရယူနေပါသည်...'}
-            video_path, title = download_video_only(url)
+            video_path, title = download_video(url)
             audio_path = video_path.replace('.mp4', '_original.mp3')
             
             processing_status[process_id] = {'status': 'processing', 'percent': 20, 'message': 'Audio ကိုခွဲထုတ်နေပါသည်...'}

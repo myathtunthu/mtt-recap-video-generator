@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+# This is a placeholder file. You need to export real cookies from your browser.
