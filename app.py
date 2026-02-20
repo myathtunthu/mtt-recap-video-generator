@@ -222,12 +222,56 @@ def login():
                 <input type="password" name="password" placeholder="လျှို့ဝှက်နံပါတ်" required>
                 <button type="submit">ဝင်မယ်</button>
             </form>
-            <div class="link"><a href="/signup">အကောင့်မရှိသေးဘူးလား? မသုံးနဲ့</a></div>
+            <div class="link"><a href="/signup">အကောင့်မရှိသေးဘူးလား? အသစ်ဆောက်မယ်</a></div>
         </div>
     </body>
     </html>
     '''
-
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if User.query.filter_by(username=username).first():
+            return 'ဒီအမည်ရှိပြီးသားပါ'
+        
+        user = User(username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        
+        return redirect(url_for('login'))
+    
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Sign Up - Video Generator</title>
+        <style>
+            body { font-family: Arial; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; }
+            .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 300px; }
+            h2 { text-align: center; color: #333; margin-bottom: 30px; }
+            input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+            button { width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+            .link { text-align: center; margin-top: 15px; }
+            .link a { color: #667eea; text-decoration: none; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>📝 အကောင့်အသစ်ဆောက်မယ်</h2>
+            <form method="post">
+                <input type="text" name="username" placeholder="နာမည်" required>
+                <input type="password" name="password" placeholder="လျှို့ဝှက်နံပါတ်" required>
+                <button type="submit">ဆောက်မယ်</button>
+            </form>
+            <div class="link"><a href="/login">အကောင့်ရှိပြီးသားလား? Login ဝင်မယ်</a></div>
+        </div>
+    </body>
+    </html>
+    '''
 @app.route('/logout')
 @login_required
 def logout():
